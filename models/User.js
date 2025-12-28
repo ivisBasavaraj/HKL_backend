@@ -33,6 +33,11 @@ const userSchema = new mongoose.Schema({
     enum: ['Incoming Inspection', 'Finishing', 'Quality Control', 'Delivery', null],
     default: null
   },
+  finishingAssignment: {
+    productName: String,
+    toolListName: String,
+    diagramUrl: String
+  },
   completedToday: {
     type: Number,
     default: 0

@@ -120,7 +120,7 @@ router.put('/:id/unassign-task', auth, supervisorAuth, async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { assignedTask: null },
+      { assignedTask: null, finishingAssignment: null },
       { new: true }
     ).select('-password');
 
@@ -133,6 +133,61 @@ router.put('/:id/unassign-task', auth, supervisorAuth, async (req, res) => {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
+});
+
+// Assign finishing task with details (Supervisor or Admin)
+router.put('/:id/assign-finishing', auth, supervisorAuth, async (req, res) => {
+  const upload = require('../middleware/upload');
+  
+  upload.single('diagram')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ message: 'File upload error', error: err.message });
+    }
+
+    try {
+      const { productName, toolListName } = req.body;
+      
+      if (!productName || !toolListName) {
+        return res.status(400).json({ message: 'Product name and tool list name are required' });
+      }
+
+      const updateData = {
+        assignedTask: 'Finishing',
+        finishingAssignment: {
+          productName,
+          toolListName,
+          diagramUrl: req.file ? `/uploads/${req.file.filename}` : null
+        }
+      };
+
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true }
+      ).select('-password');
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Send notification
+      try {
+        const supervisor = await User.findById(req.user.userId);
+        await notifyUserOfTaskAssignment(
+          user._id,
+          'Finishing',
+          supervisor ? supervisor.name : 'Supervisor'
+        );
+      } catch (notificationError) {
+        console.error('Failed to send notification:', notificationError);
+      }
+
+      res.json(user);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 });
 
 // Update user status (Admin only)

@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const QualityControl = require('../models/QualityControl');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { notifyOnQualityControlUpdate } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -40,6 +41,18 @@ router.post('/', auth, upload.single('signatureImage'), [
     const qualityControl = new QualityControl(qcData);
     await qualityControl.save();
     await qualityControl.populate('inspectedBy', 'name username');
+
+    // Send notification to supervisors and admins about QC record
+    try {
+      await notifyOnQualityControlUpdate(
+        qualityControl.partId,
+        qualityControl.qcStatus || 'Completed',
+        qualityControl.inspectorName,
+        qualityControl.createdAt
+      );
+    } catch (notificationError) {
+      console.error('Failed to send QC notification:', notificationError);
+    }
 
     res.status(201).json(qualityControl);
   } catch (error) {
@@ -118,6 +131,11 @@ router.put('/:id', auth, upload.single('signatureImage'), [
       updateData.signatureImage = req.file.path;
     }
 
+    const currentQC = await QualityControl.findById(req.params.id);
+    if (!currentQC) {
+      return res.status(404).json({ message: 'Quality control record not found' });
+    }
+
     const qcRecord = await QualityControl.findByIdAndUpdate(
       req.params.id,
       updateData,
@@ -126,6 +144,20 @@ router.put('/:id', auth, upload.single('signatureImage'), [
 
     if (!qcRecord) {
       return res.status(404).json({ message: 'Quality control record not found' });
+    }
+
+    // Send notification if QC status changed
+    try {
+      if (req.body.qcStatus && req.body.qcStatus !== currentQC.qcStatus) {
+        await notifyOnQualityControlUpdate(
+          qcRecord.partId,
+          qcRecord.qcStatus,
+          qcRecord.inspectorName,
+          qcRecord.updatedAt
+        );
+      }
+    } catch (notificationError) {
+      console.error('Failed to send QC update notification:', notificationError);
     }
 
     res.json(qcRecord);

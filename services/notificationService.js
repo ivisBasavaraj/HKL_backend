@@ -13,18 +13,31 @@ const initializeFirebase = () => {
   if (firebaseInitialized) return;
 
   try {
-    if (admin && process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
+    if (admin) {
+      // Try environment variable first
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      }
+      // Try file path
+      else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+        const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+      }
+      else {
+        console.log('Firebase not configured - push notifications disabled');
+        return;
+      }
+      
       firebaseInitialized = true;
-      console.log('Firebase Admin initialized successfully');
-    } else {
-      console.log('Firebase not configured - push notifications disabled');
+      console.log('✅ Firebase Admin initialized successfully');
     }
   } catch (error) {
-    console.error('Firebase initialization error:', error.message);
+    console.error('❌ Firebase initialization error:', error.message);
   }
 };
 
@@ -362,6 +375,125 @@ const notifyToolManagementEvent = async (eventType, toolData, recipientRoles = [
   }
 };
 
+// 7. Quality Control Notifications - Notify Supervisor and Admin
+const notifyOnQualityControlUpdate = async (partId, status, inspectorName, timestamp, recipientRoles = ['Supervisor', 'Admin']) => {
+  try {
+    const User = require('../models/User');
+    // Get recipients based on roles
+    const recipients = await User.find({
+      role: { $in: recipientRoles },
+      isActive: true
+    });
+
+    if (recipients.length === 0) {
+      console.log('No active recipients found for QC notification');
+      return { success: false, error: 'No recipients found' };
+    }
+
+    const results = [];
+
+    const statusLabel = status === 'Pass' ? '✅ PASS' : '❌ FAIL';
+    const pushTitle = `Quality Control: ${statusLabel}`;
+    const pushBody = `Part ${partId} quality control ${status.toLowerCase()} by ${inspectorName}`;
+    const pushData = {
+      type: 'QUALITY_CONTROL',
+      partId: partId,
+      status: status,
+      inspectorName: inspectorName,
+      timestamp: new Date(timestamp).toISOString()
+    };
+
+    const pushResult = await sendPushToUsers(recipients, pushTitle, pushBody, pushData);
+    results.push({ type: 'push', ...pushResult });
+
+    return { success: true, results };
+
+  } catch (error) {
+    console.error('Error sending QC notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// 8. Delivery Status Notifications - Notify relevant users
+const notifyOnDeliveryStatusChange = async (partId, deliveryStatus, customerName, timestamp, recipientRoles = ['Supervisor', 'Admin']) => {
+  try {
+    const User = require('../models/User');
+    // Get recipients based on roles
+    const recipients = await User.find({
+      role: { $in: recipientRoles },
+      isActive: true
+    });
+
+    if (recipients.length === 0) {
+      console.log('No active recipients found for delivery notification');
+      return { success: false, error: 'No recipients found' };
+    }
+
+    const results = [];
+
+    const statusEmoji = {
+      'Pending': '⏳',
+      'Dispatched': '📦',
+      'In Transit': '🚚',
+      'Delivered': '✅',
+      'Failed': '❌'
+    };
+
+    const emoji = statusEmoji[deliveryStatus] || '📋';
+    const pushTitle = `Delivery ${deliveryStatus}: ${emoji}`;
+    const pushBody = `Part ${partId} delivery to ${customerName} is now ${deliveryStatus.toLowerCase()}`;
+    const pushData = {
+      type: 'DELIVERY_STATUS',
+      partId: partId,
+      deliveryStatus: deliveryStatus,
+      customerName: customerName,
+      timestamp: new Date(timestamp).toISOString()
+    };
+
+    const pushResult = await sendPushToUsers(recipients, pushTitle, pushBody, pushData);
+    results.push({ type: 'push', ...pushResult });
+
+    return { success: true, results };
+
+  } catch (error) {
+    console.error('Error sending delivery notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// 9. Delivery Assignment Notification - Notify assigned User
+const notifyUserOfDeliveryAssignment = async (userId, partId, customerName, driverName) => {
+  try {
+    const User = require('../models/User');
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return { success: false, error: 'User not found' };
+    }
+
+    const results = [];
+
+    const pushTitle = '📦 New Delivery Assigned';
+    const pushBody = `You have been assigned delivery for part ${partId} to ${customerName}`;
+    const pushData = {
+      type: 'DELIVERY_ASSIGNED',
+      partId: partId,
+      customerName: customerName,
+      driverName: driverName,
+      assignedAt: new Date().toISOString()
+    };
+
+    const pushResult = await sendPushToUsers([user], pushTitle, pushBody, pushData);
+    results.push({ type: 'push', ...pushResult });
+
+    return { success: true, results };
+
+  } catch (error) {
+    console.error('Error sending delivery assignment notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   initializeFirebase,
   notifySupervisorOfNewUser,
@@ -369,5 +501,8 @@ module.exports = {
   notifySupervisorOfFinishingStatus,
   notifyAdminOfPauseWithRemark,
   notifySupervisorOfInspectionStart,
-  notifyToolManagementEvent
+  notifyToolManagementEvent,
+  notifyOnQualityControlUpdate,
+  notifyOnDeliveryStatusChange,
+  notifyUserOfDeliveryAssignment
 };

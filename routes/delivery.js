@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const Delivery = require('../models/Delivery');
 const { auth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { notifyOnDeliveryStatusChange, notifyUserOfDeliveryAssignment } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -48,6 +49,18 @@ router.post('/', auth, upload.single('deliveryProofImage'), [
     const delivery = new Delivery(deliveryData);
     await delivery.save();
     await delivery.populate('managedBy', 'name username');
+
+    // Send notification about new delivery
+    try {
+      await notifyOnDeliveryStatusChange(
+        delivery.partId,
+        delivery.deliveryStatus,
+        delivery.customerName,
+        delivery.createdAt
+      );
+    } catch (notificationError) {
+      console.error('Failed to send delivery creation notification:', notificationError);
+    }
 
     res.status(201).json(delivery);
   } catch (error) {
@@ -128,6 +141,11 @@ router.put('/:id', auth, upload.single('deliveryProofImage'), [
       updateData.deliveryProofImage = req.file.path;
     }
 
+    const currentDelivery = await Delivery.findById(req.params.id);
+    if (!currentDelivery) {
+      return res.status(404).json({ message: 'Delivery record not found' });
+    }
+
     const delivery = await Delivery.findByIdAndUpdate(
       req.params.id,
       updateData,
@@ -136,6 +154,20 @@ router.put('/:id', auth, upload.single('deliveryProofImage'), [
 
     if (!delivery) {
       return res.status(404).json({ message: 'Delivery record not found' });
+    }
+
+    // Send notification if delivery status changed
+    try {
+      if (req.body.deliveryStatus && req.body.deliveryStatus !== currentDelivery.deliveryStatus) {
+        await notifyOnDeliveryStatusChange(
+          delivery.partId,
+          delivery.deliveryStatus,
+          delivery.customerName,
+          delivery.updatedAt
+        );
+      }
+    } catch (notificationError) {
+      console.error('Failed to send delivery status notification:', notificationError);
     }
 
     res.json(delivery);
