@@ -4,6 +4,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/database');
+const { initializeFirebase } = require('./services/pushNotificationService');
+
+// Initialize Firebase Admin
+initializeFirebase();
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');

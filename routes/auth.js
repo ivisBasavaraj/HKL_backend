@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { auth } = require('../middleware/auth');
-const { notifySupervisorOfNewUser } = require('../services/notificationService');
+const { notifySupervisorOfNewUser, sendWelcomeNotification } = require('../services/notificationService');
 const mongoose = require('mongoose');
 
 const router = express.Router();
@@ -69,6 +69,9 @@ router.post('/login', [
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE }
     );
+
+    // Send welcome notification (async, don't wait for it)
+    sendWelcomeNotification(user).catch(err => console.error('Welcome notification error:', err));
 
     res.json({
       token,

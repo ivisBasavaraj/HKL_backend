@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const path = require('path');
 
 // Initialize Firebase Admin (configure with your Firebase credentials)
 let firebaseInitialized = false;
@@ -13,7 +14,18 @@ const initializeFirebase = () => {
         credential: admin.credential.cert(serviceAccount)
       });
       firebaseInitialized = true;
-      console.log('Firebase Admin initialized successfully');
+      console.log('Firebase Admin initialized successfully from env');
+    } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+      const serviceAccountPath = path.isAbsolute(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
+        ? process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+        : path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+        
+      const serviceAccount = require(serviceAccountPath);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      firebaseInitialized = true;
+      console.log('Firebase Admin initialized successfully from path:', serviceAccountPath);
     } else {
       console.log('Firebase not configured - push notifications disabled');
     }

@@ -1,5 +1,6 @@
 // Firebase Admin - conditionally loaded
 let admin = null;
+const path = require('path');
 try {
   admin = require('firebase-admin');
 } catch (error) {
@@ -23,7 +24,11 @@ const initializeFirebase = () => {
       }
       // Try file path
       else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-        const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+        const serviceAccountPath = path.isAbsolute(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
+          ? process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+          : path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+          
+        const serviceAccount = require(serviceAccountPath);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
         });
@@ -494,6 +499,35 @@ const notifyUserOfDeliveryAssignment = async (userId, partId, customerName, driv
   }
 };
 
+// 10. Welcome Notification after Login
+const sendWelcomeNotification = async (user) => {
+  try {
+    if (!user) {
+      return { success: false, error: 'User not found' };
+    }
+
+    const results = [];
+
+    const pushTitle = '👋 Welcome Back!';
+    const pushBody = `Hello ${user.name}, welcome back to TrackPro.`;
+    const pushData = {
+      type: 'WELCOME',
+      userName: user.name,
+      userRole: user.role,
+      timestamp: new Date().toISOString()
+    };
+
+    const pushResult = await sendPushToUsers([user], pushTitle, pushBody, pushData);
+    results.push({ type: 'push', ...pushResult });
+
+    return { success: true, results };
+
+  } catch (error) {
+    console.error('Error sending welcome notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   initializeFirebase,
   notifySupervisorOfNewUser,
@@ -504,5 +538,6 @@ module.exports = {
   notifyToolManagementEvent,
   notifyOnQualityControlUpdate,
   notifyOnDeliveryStatusChange,
-  notifyUserOfDeliveryAssignment
+  notifyUserOfDeliveryAssignment,
+  sendWelcomeNotification
 };

@@ -3,6 +3,7 @@ const { auth, supervisorAuth } = require('../middleware/auth');
 const MasterTool = require('../models/MasterTool');
 const ToolUsageLog = require('../models/ToolUsageLog');
 const ToolAlert = require('../models/ToolAlert');
+const User = require('../models/User');
 const { sendToolLifeAlert } = require('../services/emailService');
 const { sendPushNotification, sendPushToMultipleDevices } = require('../services/pushNotificationService');
 
@@ -20,7 +21,7 @@ async function getComponentsUsedByTool(toolId) {
   return logs;
 }
 
-async function sendSupervisorNotification(email, data, fcmTokens = []) {
+async function sendSupervisorNotification(email, data) {
   let emailSent = false;
   let pushSent = false;
   
@@ -30,10 +31,25 @@ async function sendSupervisorNotification(email, data, fcmTokens = []) {
     emailSent = emailResult.success;
   }
   
-  // Send push notification
-  if (fcmTokens && fcmTokens.length > 0) {
-    const pushResult = await sendPushToMultipleDevices(fcmTokens, data);
-    pushSent = pushResult.success;
+  // Send push notification - Find supervisors to get their FCM tokens
+  try {
+    // Find all active supervisors. If an email is provided, try to match by username (since User model lacks email field)
+    const query = { role: 'Supervisor', isActive: true };
+    const supervisors = await User.find(query);
+    
+    const fcmTokens = [];
+    supervisors.forEach(s => {
+      if (s.pushNotificationsEnabled && s.fcmTokens) {
+        s.fcmTokens.forEach(t => fcmTokens.push(t.token));
+      }
+    });
+
+    if (fcmTokens.length > 0) {
+      const pushResult = await sendPushToMultipleDevices(fcmTokens, data);
+      pushSent = pushResult.success;
+    }
+  } catch (error) {
+    console.error('Error fetching supervisor tokens for push:', error);
   }
   
   return emailSent || pushSent;
