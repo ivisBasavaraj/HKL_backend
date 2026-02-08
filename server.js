@@ -22,6 +22,9 @@ const toolStockRoutes = require('./routes/toolStock');
 
 const app = express();
 
+// Trust proxy for Render.com deployment
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 app.use(cors());

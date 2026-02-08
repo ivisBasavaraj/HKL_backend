@@ -14,15 +14,17 @@ const initializeFirebase = () => {
   if (firebaseInitialized) return;
 
   try {
-    if (admin) {
-      // Try environment variable first
+    if (admin && !admin.apps.length) {
+      // Try environment variable first (for production)
       if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
         });
+        firebaseInitialized = true;
+        console.log('✅ Firebase initialized from env variable');
       }
-      // Try file path
+      // Try file path (for local development)
       else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
         const serviceAccountPath = path.isAbsolute(process.env.FIREBASE_SERVICE_ACCOUNT_PATH)
           ? process.env.FIREBASE_SERVICE_ACCOUNT_PATH
@@ -32,17 +34,17 @@ const initializeFirebase = () => {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
         });
+        firebaseInitialized = true;
+        console.log('✅ Firebase initialized from file');
       }
       else {
-        console.log('Firebase not configured - push notifications disabled');
-        return;
+        console.log('⚠️ Firebase not configured');
       }
-      
+    } else if (admin && admin.apps.length) {
       firebaseInitialized = true;
-      console.log('✅ Firebase Admin initialized successfully');
     }
   } catch (error) {
-    console.error('❌ Firebase initialization error:', error.message);
+    console.error('❌ Firebase error:', error.message);
   }
 };
 
