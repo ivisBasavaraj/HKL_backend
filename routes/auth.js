@@ -170,40 +170,49 @@ router.post('/fcm-token', auth, [
     }
 
     const { token, deviceId, deviceType = 'android' } = req.body;
-    const userId = req.user.userId;
+    const userId = req.user._id;
+
+    // Fetch user from database
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
     // Check if token already exists for this device
-    const existingTokenIndex = req.user.fcmTokens.findIndex(t => t.deviceId === deviceId);
+    const existingTokenIndex = user.fcmTokens.findIndex(t => t.deviceId === deviceId);
 
     if (existingTokenIndex >= 0) {
       // Update existing token
-      req.user.fcmTokens[existingTokenIndex] = {
+      user.fcmTokens[existingTokenIndex] = {
         token,
         deviceId,
         deviceType,
         lastUsed: new Date()
       };
+      console.log(`✅ Updated FCM token for user ${user.username}, device ${deviceId}`);
     } else {
       // Add new token
-      req.user.fcmTokens.push({
+      user.fcmTokens.push({
         token,
         deviceId,
         deviceType,
         lastUsed: new Date()
       });
+      console.log(`✅ Added new FCM token for user ${user.username}, device ${deviceId}`);
     }
 
-    await req.user.save();
+    await user.save();
 
     res.json({
+      success: true,
       message: 'FCM token registered successfully',
       deviceId,
       deviceType
     });
 
   } catch (error) {
-    console.error('Error registering FCM token:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Error registering FCM token:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
