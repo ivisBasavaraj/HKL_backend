@@ -49,7 +49,7 @@ const initializeFirebase = () => {
 
 
 // Send push notification to single token
-const sendPushNotification = async (fcmToken, title, body, data = {}) => {
+const sendPushNotification = async (fcmToken, titleOrData, body = '', data = {}) => {
   if (!firebaseInitialized) {
     initializeFirebase();
   }
@@ -58,19 +58,43 @@ const sendPushNotification = async (fcmToken, title, body, data = {}) => {
     return { success: false, error: 'Firebase not configured or no FCM token' };
   }
 
+  let title = titleOrData;
+  let finalBody = body;
+  let finalData = data;
+
+  // Handle both formats: (token, title, body, data) OR (token, alertData)
+  if (typeof titleOrData === 'object' && !body) {
+    const alertData = titleOrData;
+    const { tool_id, tool_name, alert_type, usage_percentage, remaining_life } = alertData;
+    const isCritical = alert_type === 'CRITICAL';
+    
+    title = isCritical 
+      ? `🚨 CRITICAL: Tool ${tool_id} Replacement Required`
+      : `⚠️ WARNING: Tool ${tool_id} Nearing End of Life`;
+    finalBody = `${tool_name} - ${usage_percentage.toFixed(1)}% used, ${remaining_life} units remaining`;
+    finalData = {
+      type: 'TOOL_LIFE_ALERT',
+      tool_id: String(tool_id),
+      tool_name: tool_name,
+      alert_type: alert_type,
+      usage_percentage: String(usage_percentage),
+      remaining_life: String(remaining_life),
+    };
+  }
+
   const message = {
     token: fcmToken,
     notification: {
       title: title,
-      body: body,
+      body: finalBody,
     },
-    data: data,
+    data: finalData,
     android: {
       priority: 'high',
       notification: {
         sound: 'default',
-        color: '#2196F3',
-        channelId: 'trackpro_notifications',
+        color: title.includes('CRITICAL') ? '#dc3545' : '#2196F3',
+        channelId: 'high_importance_channel',
       }
     },
     apns: {
@@ -93,8 +117,8 @@ const sendPushNotification = async (fcmToken, title, body, data = {}) => {
   }
 };
 
-// Send push notifications to multiple users
-const sendPushToUsers = async (users, title, body, data = {}) => {
+// Send push notifications to multiple users or tokens
+const sendPushToUsers = async (usersOrTokens, titleOrData, body = '', data = {}) => {
   if (!admin) {
     return { success: false, error: 'Firebase Admin not available' };
   }
@@ -107,32 +131,61 @@ const sendPushToUsers = async (users, title, body, data = {}) => {
     return { success: false, error: 'Firebase not configured' };
   }
 
-  const tokens = [];
-  users.forEach(user => {
-    if (user.pushNotificationsEnabled && user.fcmTokens && user.fcmTokens.length > 0) {
-      user.fcmTokens.forEach(fcmToken => {
-        tokens.push(fcmToken.token);
+  let title = titleOrData;
+  let finalBody = body;
+  let finalData = data;
+  let tokens = [];
+
+  // Handle users vs tokens
+  if (Array.isArray(usersOrTokens) && usersOrTokens.length > 0) {
+    if (typeof usersOrTokens[0] === 'string') {
+      tokens = usersOrTokens;
+    } else {
+      usersOrTokens.forEach(user => {
+        if (user.pushNotificationsEnabled && user.fcmTokens && user.fcmTokens.length > 0) {
+          user.fcmTokens.forEach(fcmToken => {
+            tokens.push(fcmToken.token);
+          });
+        }
       });
     }
-  });
+  }
 
   if (tokens.length === 0) {
-    return { success: false, error: 'No FCM tokens found for users' };
+    return { success: false, error: 'No FCM tokens found' };
+  }
+
+  // Handle alertData format
+  if (typeof titleOrData === 'object' && !body) {
+    const alertData = titleOrData;
+    const { tool_id, tool_name, alert_type, usage_percentage, remaining_life } = alertData;
+    const isCritical = alert_type === 'CRITICAL';
+    
+    title = isCritical 
+      ? `🚨 CRITICAL: Tool ${tool_id} Replacement Required`
+      : `⚠️ WARNING: Tool ${tool_id} Nearing End of Life`;
+    finalBody = `${tool_name} - ${usage_percentage.toFixed(1)}% used, ${remaining_life} units remaining`;
+    finalData = {
+      type: 'TOOL_LIFE_ALERT',
+      tool_id: String(tool_id),
+      tool_name: tool_name,
+      alert_type: alert_type,
+    };
   }
 
   const message = {
     notification: {
       title: title,
-      body: body,
+      body: finalBody,
     },
-    data: data,
+    data: finalData,
     tokens: tokens,
     android: {
       priority: 'high',
       notification: {
         sound: 'default',
-        color: '#2196F3',
-        channelId: 'trackpro_notifications',
+        color: title.includes('CRITICAL') ? '#dc3545' : '#2196F3',
+        channelId: 'high_importance_channel',
       }
     },
     apns: {

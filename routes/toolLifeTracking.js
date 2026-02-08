@@ -5,7 +5,7 @@ const ToolUsageLog = require('../models/ToolUsageLog');
 const ToolAlert = require('../models/ToolAlert');
 const User = require('../models/User');
 const { sendToolLifeAlert } = require('../services/emailService');
-const { sendPushNotification, sendPushToMultipleDevices } = require('../services/pushNotificationService');
+const { sendPushNotification, sendPushToMultipleDevices } = require('../services/notificationService');
 
 const router = express.Router();
 

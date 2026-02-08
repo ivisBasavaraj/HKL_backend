@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/database');
-const { initializeFirebase } = require('./services/pushNotificationService');
+const { initializeFirebase } = require('./services/notificationService');
 
 // Initialize Firebase Admin
 initializeFirebase();
